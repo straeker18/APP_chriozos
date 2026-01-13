@@ -62,23 +62,34 @@ class PrecioDiario(QWidget):
         return sqlite3.connect(DB_PATH)
 
     def cargar_referencias_base(self):
-        """Obtiene las referencias y calcula su costo promedio histórico"""
+        fecha = self.fecha.date().toString("yyyy-MM-dd")
+
         conn = self.conectar()
         cursor = conn.cursor()
-        
-        # Esta consulta calcula el costo promedio por kilo basado en las tandas
+
         cursor.execute("""
             SELECT 
-                r.id, 
+                r.id,
                 r.nombre,
-                IFNULL(AVG(tm.total / t.cantidad_producida), 0) as costo_promedio
+                IFNULL(
+                    SUM(h.total) / NULLIF(SUM(t.cantidad_producida), 0),
+                    0
+                ) AS costo_dia_kg
             FROM referencias_chorizo r
-            LEFT JOIN tandas t ON r.id = t.referencia_id
-            LEFT JOIN tanda_materia_prima tm ON t.id = tm.tanda_id
+            LEFT JOIN tandas t 
+                ON r.id = t.referencia_id
+                AND t.fecha = ?
+            LEFT JOIN historial_inventario_materia_prima h
+                ON h.tanda_id = t.id
+                AND h.tipo_movimiento = 'SALIDA'
+                AND h.fecha = ?
             GROUP BY r.id
-        """)
+        """, (fecha, fecha))
+
         self.referencias = cursor.fetchall()
         conn.close()
+
+
 
     def calcular_sugeridos(self):
         """Recalcula la columna de precio sugerido según el margen"""
